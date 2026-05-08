@@ -1,0 +1,20 @@
+python3 --version
+pip3 --version
+node -v
+npm -v
+sudo systemctl status nginx
+sudo systemctl status postgresl
+
+фласк:
+cd ~/rgr_timp
+source venv/bin/activate 
+тут команды с фласком
+
+установка:
+sudo apt install nginx -y
+
+фласк:
+cd ~/rgr_timp
+python3 -m venv venv
+source venv/bin/activate
+pip install flask flask-cors flask-sqlalchemy flask-bcrypt pyjwt psycopg2-binary
