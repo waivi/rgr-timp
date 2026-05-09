@@ -13,7 +13,7 @@ CORS(app)
 # Строка подключения к PostgreSQL
 DATABASE_URL = os.environ.get(
     'DATABASE_URL',
-    'postgresql://hotel_admin:твой_пароль@localhost:5432/hotel_access'
+    'postgresql://hotel_admin:7912@localhost:5432/rgr'
 )
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False

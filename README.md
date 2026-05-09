@@ -1,11 +1,15 @@
 # Getting Started with Create React App
 #запуск 
-терминал 1
+терминал 1 
 cd backend
-python app.py
+source venv/bin/activate (линукс включаем виртуальное окружение)
+pip install -r requirements.txt (первая установка)
+python app.py 
+deactivate (выключить окружение)
 
 терминал 2
 cd frontend
+npm install (если первый раз то зависимости установить)
 npm start
 
 

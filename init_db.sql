@@ -1,3 +1,4 @@
+\c rgr
 
 DROP TABLE IF EXISTS audit_logs CASCADE;
 DROP TABLE IF EXISTS access_keys CASCADE;
@@ -37,7 +38,7 @@ CREATE TABLE doors (
     door_name       VARCHAR(100)    NOT NULL UNIQUE,
     description     TEXT,
     location        VARCHAR(50)     NOT NULL,
-    floor           INT             NOT NULL CHECK (floor BETWEEN 0 AND 3),
+    floor           INT             NOT NULL CHECK (floor BETWEEN 0 AND 4),
     room_number     INT,
     category        VARCHAR(30)     NOT NULL,
     is_active       BOOLEAN         NOT NULL DEFAULT TRUE
