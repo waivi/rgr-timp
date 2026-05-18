@@ -76,6 +76,17 @@ function Login({ onLogin }) {
           </tbody>
         </table>
       </div>
+
+      <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '14px' }}>
+        <a href="/door" style={{ 
+          color: '#e94560', 
+          textDecoration: 'none',
+          fontWeight: 'bold',
+          fontSize: '16px'
+        }}>
+          🚪 Зайти в помещение (симуляция двери)
+        </a>
+      </div>
     </div>
   );
 }

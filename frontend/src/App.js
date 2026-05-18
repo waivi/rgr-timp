@@ -4,6 +4,8 @@ import Login from './Login';
 import AdminPage from './AdminPage';
 import EmployeePage from './EmployeePage';
 import SecurityPage from './SecurityPage';
+import DoorPage from './DoorPage';
+import InsidePage from './InsidePage';
 import './App.css';
 
 function App() {
@@ -77,7 +79,11 @@ function App() {
           </div>
         )}
 
-        {getDashboard()}
+        <Routes>
+          <Route path="/" element={getDashboard()} />
+          <Route path="/door" element={<DoorPage />} />
+          <Route path="/inside" element={<InsidePage />} />
+        </Routes>
       </div>
     </Router>
   );

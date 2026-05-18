@@ -3,12 +3,20 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from datetime import datetime, timedelta
+import pytz
 import random
 import os
 
 # ==================== НАСТРОЙКИ ====================
 app = Flask(__name__)
 CORS(app)
+
+# Часовой пояс Новосибирска
+TIMEZONE = pytz.timezone('Asia/Novosibirsk')
+
+def now():
+    """Возвращает текущее время в Новосибирске"""
+    return datetime.now(TIMEZONE)
 
 # Строка подключения к PostgreSQL
 DATABASE_URL = os.environ.get(
@@ -57,7 +65,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(225), nullable=False)
     phone = db.Column(db.String(12), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=now)
 
     role = db.relationship('Role', foreign_keys=[role_id], lazy=True)
     position = db.relationship('Position', foreign_keys=[position_id], lazy=True)
@@ -130,9 +138,9 @@ class AccessKey(db.Model):
     issued_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
     pin_code = db.Column(db.String(10), nullable=False)
     status = db.Column(db.String(15), default='active', nullable=False)
-    valid_from = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    valid_from = db.Column(db.DateTime, default=now, nullable=False)
     valid_until = db.Column(db.DateTime, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=now)
 
     recipient = db.relationship('User', foreign_keys=[user_id], lazy=True)
     issuer = db.relationship('User', foreign_keys=[issued_id], lazy=True)
@@ -166,7 +174,7 @@ class AuditLog(db.Model):
     entity_id = db.Column(db.Integer)
     details = db.Column(db.Text)
     ip_address = db.Column(db.String(45))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=now)
 
     user = db.relationship('User', backref='audit_logs', lazy=True)
 
@@ -181,6 +189,33 @@ class AuditLog(db.Model):
             'details': self.details,
             'ipAddress': self.ip_address,
             'createdAt': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class DoorSession(db.Model):
+    __tablename__ = 'door_sessions'
+    session_id = db.Column(db.Integer, primary_key=True)
+    access_key_id = db.Column(db.Integer, db.ForeignKey('access_keys.key_id'), nullable=False, unique=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
+    door_id = db.Column(db.Integer, db.ForeignKey('doors.door_id'), nullable=False)
+    entered_at = db.Column(db.DateTime, default=now, nullable=False)
+
+    access_key = db.relationship('AccessKey', backref='session', lazy=True, uselist=False)
+    user = db.relationship('User', lazy=True)
+    door = db.relationship('Door', lazy=True)
+
+    def to_dict(self):
+        return {
+            'sessionId': self.session_id,
+            'accessKeyId': self.access_key_id,
+            'pin': self.access_key.pin_code if self.access_key else None,
+            'userId': self.user_id,
+            'userName': f"{self.user.last_name} {self.user.first_name}".strip() if self.user else None,
+            'userPosition': self.user.position.name if self.user and self.user.position else None,
+            'doorId': self.door_id,
+            'doorName': self.door.door_name if self.door else None,
+            'doorLocation': self.door.location if self.door else None,
+            'enteredAt': self.entered_at.isoformat() if self.entered_at else None
         }
 
 
@@ -216,10 +251,10 @@ def log_action(user_id, action, entity_type=None, entity_id=None, details=None, 
 
 def expire_old_keys():
     """Автоматически проставляет статус expired для просроченных ключей и логирует"""
-    now = datetime.utcnow()
+    current_time = now()
     expired = AccessKey.query.filter(
         AccessKey.status == 'active',
-        AccessKey.valid_until <= now
+        AccessKey.valid_until <= current_time
     ).all()
 
     for key in expired:
@@ -241,6 +276,45 @@ def expire_old_keys():
 
     if expired:
         db.session.commit()
+def can_enter_door(pin_code, ip_address=None):
+    """Проверяет, можно ли войти по данному PIN.
+    Возвращает (True, key) или (False, сообщение)"""
+
+    # Ищем активный ключ с таким PIN
+    key = AccessKey.query.filter_by(pin_code=pin_code, status='active').first()
+
+    if not key:
+        # Логируем попытку с неверным PIN
+        log_action(None, 'ENTER_DOOR_FAILED', entity_type='KEY', entity_id=None,
+                   details={'pin': pin_code, 'reason': 'Неверный PIN или ключ недействителен'},
+                   ip_address=ip_address)
+        return False, "Неверный PIN или ключ недействителен"
+
+    # Приводим время ключа к новосибирскому часовому поясу для сравнения
+    key_time = key.valid_until
+    if key_time.tzinfo is None:
+        key_time = TIMEZONE.localize(key_time)
+
+    if key_time <= now():
+        key.status = 'expired'
+        db.session.commit()
+        # Логируем
+        log_action(key.user_id, 'ENTER_DOOR_FAILED', entity_type='KEY', entity_id=key.key_id,
+                   details={'pin': pin_code, 'reason': 'Ключ истёк'},
+                   ip_address=ip_address)
+        return False, "Ключ истёк"
+
+    # Проверяем, не находится ли уже кто-то внутри по этому же ключу
+    existing_session = DoorSession.query.filter_by(access_key_id=key.key_id).first()
+    if existing_session:
+        # Логируем попытку повторного входа
+        log_action(key.user_id, 'ENTER_DOOR_FAILED', entity_type='KEY', entity_id=key.key_id,
+                   details={'pin': pin_code, 'reason': 'Попытка повторного входа — по этому PIN уже вошли'},
+                   ip_address=ip_address)
+        return False, "По этому PIN-коду уже вошли в помещение"
+
+    return True, key
+
 
 # ==================== ЭНДПОИНТЫ ====================
 
@@ -275,6 +349,89 @@ def get_doors():
     """Получить список всех активных дверей"""
     doors = Door.query.filter_by(is_active=True).all()
     return jsonify([d.to_dict() for d in doors])
+
+
+# --- Эндпоинты симуляции двери ---
+@app.route("/api/door/enter", methods=["POST"])
+def door_enter():
+    data = request.get_json()
+    pin = data.get('pin', '').strip()
+    if not pin or len(pin) != 4 or not pin.isdigit():
+        return jsonify({"success": False, "message": "Введите 4-значный PIN"}), 400
+    
+    can_enter, result = can_enter_door(pin, ip_address=request.remote_addr)
+    
+    if not can_enter:
+        return jsonify({"success": False, "message": result}), 403
+    
+    key = result
+    session = DoorSession(access_key_id=key.key_id, user_id=key.user_id, door_id=key.door_id)
+    db.session.add(session)
+    db.session.commit()
+    log_action(key.user_id, 'ENTER_DOOR', entity_type='KEY', entity_id=key.key_id,
+               details={'pin': key.pin_code, 'doorName': key.door.door_name},
+               ip_address=request.remote_addr)
+    return jsonify({"success": True, "message": "Дверь открыта!", "session": session.to_dict()})
+
+
+@app.route("/api/door/exit", methods=["POST"])
+def door_exit():
+    """Выйти из помещения по PIN"""
+    data = request.get_json()
+    pin = data.get('pin', '').strip()
+
+    if not pin or len(pin) != 4 or not pin.isdigit():
+        return jsonify({"success": False, "message": "Введите 4-значный PIN"}), 400
+
+    # Ищем ключ по PIN (может быть истёкшим или отозванным, но сессия могла остаться)
+    key = AccessKey.query.filter_by(pin_code=pin).first()
+
+    if not key:
+        return jsonify({"success": False, "message": "Ключ с таким PIN не найден"}), 404
+
+    # Ищем активную сессию
+    session = DoorSession.query.filter_by(access_key_id=key.key_id).first()
+
+    if not session:
+        return jsonify({"success": False, "message": "Вы не находитесь в помещении"}), 400
+
+    door_name = session.door.door_name if session.door else "Неизвестно"
+
+    db.session.delete(session)
+    db.session.commit()
+
+    log_action(
+        key.user_id,
+        'EXIT_DOOR',
+        entity_type='KEY',
+        entity_id=key.key_id,
+        details={
+            'pin': key.pin_code,
+            'doorName': door_name
+        },
+        ip_address=request.remote_addr
+    )
+
+    return jsonify({
+        "success": True,
+        "message": f"Вы вышли из: {door_name}"
+    })
+
+
+@app.route("/api/door/status", methods=["GET"])
+def door_status():
+    """Получить статус всех дверей (кто внутри)"""
+    sessions = DoorSession.query.all()
+    return jsonify([s.to_dict() for s in sessions])
+
+
+@app.route("/api/door/status/<int:door_id>", methods=["GET"])
+def door_status_by_id(door_id):
+    """Получить статус конкретной двери"""
+    session = DoorSession.query.filter_by(door_id=door_id).first()
+    if session:
+        return jsonify({"occupied": True, "session": session.to_dict()})
+    return jsonify({"occupied": False, "session": None})
 
 
 # --- Эндпоинты сотрудника ---
@@ -324,7 +481,8 @@ def generate_key():
         return jsonify({"success": False, "message": "Недостаточно прав"}), 403
 
     pin = get_unique_pin()
-    valid_until = datetime.utcnow() + timedelta(hours=hours)
+    current_time = now()
+    valid_until = current_time + timedelta(hours=hours)
 
     key = AccessKey(
         user_id=user_id,
@@ -332,7 +490,7 @@ def generate_key():
         issued_id=issued_by,
         pin_code=pin,
         status='active',
-        valid_from=datetime.utcnow(),
+        valid_from=current_time,
         valid_until=valid_until
     )
 
@@ -431,7 +589,7 @@ def admin_create_user():
         phone=data.get('phone', ''),
         is_active=True
     )
-    user.set_password(data['password'])  # ХЕШИРУЕТСЯ ЗДЕСЬ
+    user.set_password(data['password'])
 
     db.session.add(user)
     db.session.commit()
@@ -465,7 +623,7 @@ def admin_update_user(user_id):
     if 'phone' in data:
         user.phone = data['phone']
     if 'password' in data and data['password']:
-        user.set_password(data['password'])  # ХЕШИРУЕТСЯ ЗДЕСЬ
+        user.set_password(data['password'])
     if 'isActive' in data:
         user.is_active = data['isActive']
         if not data['isActive']:
@@ -490,7 +648,7 @@ def admin_get_all_stats():
     total_users = User.query.filter_by(is_active=True).count()
     total_keys_active = AccessKey.query.filter_by(status='active').count()
     total_keys_today = AccessKey.query.filter(
-        AccessKey.created_at >= datetime.utcnow().replace(hour=0, minute=0, second=0)
+        AccessKey.created_at >= now().replace(hour=0, minute=0, second=0, microsecond=0)
     ).count()
 
     return jsonify({
@@ -518,6 +676,6 @@ def get_roles():
 
 if __name__ == "__main__":
     with app.app_context():
-        db.create_all()  # Создаст таблицы только если их нет
+        db.create_all()
     print("Сервер запущен: http://localhost:5000")
     app.run(debug=True, host='0.0.0.0', port=5000)

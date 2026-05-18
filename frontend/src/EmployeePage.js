@@ -24,11 +24,15 @@ function EmployeePage({ user, onLogout }) {
     const end = new Date(validUntil);
     const diff = end - now;
 
-    if (diff <= 0) return 'Истёк';
+    if (diff <= 0) return 'Истекает сейчас';
 
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}ч ${minutes}мин`;
+
+    if (hours > 0) {
+      return `${hours}ч ${minutes}мин`;
+    }
+    return `${minutes}мин`;
   };
 
   const getStatusColor = (validUntil) => {
@@ -36,9 +40,16 @@ function EmployeePage({ user, onLogout }) {
     const end = new Date(validUntil);
     const diff = end - now;
 
-    if (diff <= 0) return '#ff4d4f';
-    if (diff < 30 * 60 * 1000) return '#faad14';
-    return '#52c41a';
+    if (diff <= 0) return '#faad14';       // жёлтый — истекает
+    if (diff < 30 * 60 * 1000) return '#faad14'; // жёлтый — меньше 30 минут
+    return '#52c41a';                       // зелёный — всё хорошо
+  };
+
+  const isExpiringSoon = (validUntil) => {
+    const now = new Date();
+    const end = new Date(validUntil);
+    const diff = end - now;
+    return diff <= 0;
   };
 
   return (
@@ -59,19 +70,27 @@ function EmployeePage({ user, onLogout }) {
         ) : (
           keys.map(key => (
             <div key={key.id} style={{
-              border: '2px solid #d9d9d9',
+              border: `2px solid ${getStatusColor(key.validUntil)}`,
               borderRadius: '8px',
               padding: '20px',
               marginBottom: '15px',
-              textAlign: 'center'
+              textAlign: 'center',
+              background: 'white',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
             }}>
-              <div style={{ fontSize: '48px', fontWeight: 'bold', letterSpacing: '10px', marginBottom: '10px' }}>
+              <div style={{
+                fontSize: '48px',
+                fontWeight: 'bold',
+                letterSpacing: '10px',
+                marginBottom: '10px',
+                color: isExpiringSoon(key.validUntil) ? '#faad14' : '#333'
+              }}>
                 {key.pin}
               </div>
               <div style={{ fontSize: '18px', marginBottom: '5px' }}>
                 Дверь: <strong>{key.doorName}</strong>
               </div>
-              <div style={{ fontSize: '14px', color: '#666', marginBottom: '5px' }}>
+              <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px' }}>
                 {key.doorLocation}
               </div>
               <div style={{
@@ -79,7 +98,11 @@ function EmployeePage({ user, onLogout }) {
                 color: getStatusColor(key.validUntil),
                 fontWeight: 'bold'
               }}>
-                Действует ещё: {getTimeLeft(key.validUntil)}
+                {isExpiringSoon(key.validUntil) ? '⏰ Истекает: ' : '🟢 Действует ещё: '}
+                {getTimeLeft(key.validUntil)}
+              </div>
+              <div style={{ fontSize: '12px', color: '#999', marginTop: '8px' }}>
+                До: {new Date(key.validUntil).toLocaleString('ru-RU')}
               </div>
             </div>
           ))

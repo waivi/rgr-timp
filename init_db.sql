@@ -69,6 +69,14 @@ CREATE TABLE audit_logs (
     created_at      TIMESTAMP       NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE door_sessions (
+    session_id      SERIAL          PRIMARY KEY,
+    access_key_id   INT             NOT NULL UNIQUE REFERENCES access_keys(key_id),
+    user_id         INT             NOT NULL REFERENCES users(user_id),
+    door_id         INT             NOT NULL REFERENCES doors(door_id),
+    entered_at      TIMESTAMP       NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX idx_users_role ON users(role_id);
 CREATE INDEX idx_users_position ON users(position_id);
 CREATE INDEX idx_users_login ON users(login);
@@ -79,6 +87,9 @@ CREATE INDEX idx_access_keys_status ON access_keys(status);
 CREATE INDEX idx_access_keys_valid ON access_keys(valid_until);
 CREATE INDEX idx_audit_user ON audit_logs(user_id);
 CREATE INDEX idx_audit_time ON audit_logs(created_at);
+CREATE INDEX idx_door_sessions_key ON door_sessions(access_key_id);
+CREATE INDEX idx_door_sessions_user ON door_sessions(user_id);
+CREATE INDEX idx_door_sessions_door ON door_sessions(door_id);
 
 -- Роли
 INSERT INTO roles (role_name, description) VALUES 

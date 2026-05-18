@@ -2,15 +2,15 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 function AdminPage({ user, onLogout }) {
-  const [tab, setTab] = useState('users');
+  const [tab, setTab] = useState('stats');
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
   const [stats, setStats] = useState(null);
   const [positions, setPositions] = useState([]);
   const [roles, setRoles] = useState([]);
   const [message, setMessage] = useState('');
+  const [activeKeys, setActiveKeys] = useState([]);
 
-  // Форма создания пользователя
   const [newUser, setNewUser] = useState({
     login: '', password: '', lastName: '', firstName: '',
     middleName: '', roleId: '', positionId: '', phone: ''
@@ -20,6 +20,7 @@ function AdminPage({ user, onLogout }) {
     loadUsers();
     loadPositions();
     loadRoles();
+    loadStats();
   }, []);
 
   const loadUsers = async () => {
@@ -37,6 +38,11 @@ function AdminPage({ user, onLogout }) {
     setStats(res.data);
   };
 
+  const loadActiveKeys = async () => {
+    const res = await axios.get('http://localhost:5000/api/security/keys');
+    setActiveKeys(res.data.filter(k => k.status === 'active'));
+  };
+
   const loadPositions = async () => {
     const res = await axios.get('http://localhost:5000/api/admin/positions');
     setPositions(res.data);
@@ -52,6 +58,7 @@ function AdminPage({ user, onLogout }) {
     setMessage('');
     if (tabName === 'logs') loadLogs();
     if (tabName === 'stats') loadStats();
+    if (tabName === 'keys') loadActiveKeys();
   };
 
   const handleCreateUser = async (e) => {
@@ -83,12 +90,20 @@ function AdminPage({ user, onLogout }) {
   const handleBlockUser = async (userId, isActive) => {
     const action = isActive ? 'заблокировать' : 'разблокировать';
     if (!window.confirm(`Вы уверены что хотите ${action} пользователя?`)) return;
-
     await axios.put(`http://localhost:5000/api/admin/users/${userId}`, {
       isActive: !isActive,
       updatedBy: user.id
     });
     loadUsers();
+  };
+
+  const handleRevokeKey = async (keyId) => {
+    if (!window.confirm('Отозвать этот ключ?')) return;
+    await axios.post(`http://localhost:5000/api/security/keys/${keyId}/revoke`, {
+      revokedBy: user.id
+    });
+    loadActiveKeys();
+    loadStats();
   };
 
   const getRoleDisplay = (roleName) => {
@@ -114,9 +129,10 @@ function AdminPage({ user, onLogout }) {
       {/* Вкладки */}
       <div style={{ display: 'flex', gap: '10px', padding: '10px 20px', background: '#f0f0f0' }}>
         {[
+          { key: 'stats', label: 'Статистика' },
+          { key: 'keys', label: 'Активные ключи' },
           { key: 'users', label: 'Пользователи' },
           { key: 'create', label: 'Создать пользователя' },
-          { key: 'stats', label: 'Статистика' },
           { key: 'logs', label: 'Журнал действий' }
         ].map(t => (
           <button key={t.key} onClick={() => handleTabClick(t.key)}
@@ -127,6 +143,78 @@ function AdminPage({ user, onLogout }) {
       </div>
 
       <div style={{ padding: '20px' }}>
+
+        {/* Вкладка: Статистика */}
+        {tab === 'stats' && stats && (
+          <div>
+            <h3>Общая статистика системы</h3>
+            <div style={{ display: 'flex', gap: '20px', marginTop: '20px', marginBottom: '30px', flexWrap: 'wrap' }}>
+              <div style={statCard}>
+                <h2>{stats.totalUsers}</h2>
+                <p>Активных пользователей</p>
+              </div>
+              <div style={statCard}>
+                <h2>{stats.totalActiveKeys}</h2>
+                <p>Активных ключей</p>
+              </div>
+              <div style={statCard}>
+                <h2>{stats.totalKeysToday}</h2>
+                <p>Выдано сегодня</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Вкладка: Активные ключи */}
+        {tab === 'keys' && (
+          <div>
+            <h3>Активные ключи на данный момент ({activeKeys.length})</h3>
+            {activeKeys.length === 0 ? (
+              <p>Нет активных ключей.</p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={{ background: '#f0f0f0' }}>
+                      <th style={thStyle}>PIN</th>
+                      <th style={thStyle}>Сотрудник</th>
+                      <th style={thStyle}>Должность</th>
+                      <th style={thStyle}>Дверь</th>
+                      <th style={thStyle}>Расположение</th>
+                      <th style={thStyle}>Выдал</th>
+                      <th style={thStyle}>Выдан</th>
+                      <th style={thStyle}>Действует до</th>
+                      <th style={thStyle}>Действие</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeKeys.map(key => (
+                      <tr key={key.id}>
+                        <td style={{ ...tdStyle, fontWeight: 'bold', fontSize: '16px', letterSpacing: '3px' }}>{key.pin}</td>
+                        <td style={tdStyle}>{key.userName}</td>
+                        <td style={tdStyle}>{key.userPosition || '—'}</td>
+                        <td style={tdStyle}>{key.doorName}</td>
+                        <td style={tdStyle}>{key.doorLocation || '—'}</td>
+                        <td style={tdStyle}>{key.issuedByName}</td>
+                        <td style={tdStyle}>{new Date(key.createdAt).toLocaleString('ru-RU')}</td>
+                        <td style={tdStyle}>{new Date(key.validUntil).toLocaleString('ru-RU')}</td>
+                        <td style={tdStyle}>
+                          <button onClick={() => handleRevokeKey(key.id)}
+                            style={{
+                              background: '#ff4d4f', color: '#fff', border: 'none',
+                              padding: '6px 14px', borderRadius: '4px', cursor: 'pointer'
+                            }}>
+                            Отозвать
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Вкладка: Пользователи */}
         {tab === 'users' && (
@@ -201,32 +289,11 @@ function AdminPage({ user, onLogout }) {
                     {positions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </label>
-                <label>Телефон: <input value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} placeholder="+79000000000" /></label>
+                <label>Телефон: <input value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} placeholder="89000000000" /></label>
               </div>
               <button type="submit" style={{ background: '#722ed1', color: '#fff', padding: '10px 24px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Создать</button>
             </form>
             {message && <p style={{ marginTop: '15px', fontWeight: 'bold' }}>{message}</p>}
-          </div>
-        )}
-
-        {/* Вкладка: Статистика */}
-        {tab === 'stats' && stats && (
-          <div>
-            <h3>Общая статистика системы</h3>
-            <div style={{ display: 'flex', gap: '20px', marginTop: '20px', flexWrap: 'wrap' }}>
-              <div style={statCard}>
-                <h2>{stats.totalUsers}</h2>
-                <p>Активных пользователей</p>
-              </div>
-              <div style={statCard}>
-                <h2>{stats.totalActiveKeys}</h2>
-                <p>Активных ключей</p>
-              </div>
-              <div style={statCard}>
-                <h2>{stats.totalKeysToday}</h2>
-                <p>Выдано сегодня</p>
-              </div>
-            </div>
           </div>
         )}
 
