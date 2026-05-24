@@ -23,6 +23,13 @@ function AdminPage({ user, onLogout }) {
     loadStats();
   }, []);
 
+  useEffect(() => {
+    if (tab === 'logs') {
+      const interval = setInterval(loadLogs, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [tab]);
+
   const loadUsers = async () => {
     const res = await axios.get('http://localhost:5000/api/admin/users');
     setUsers(res.data);

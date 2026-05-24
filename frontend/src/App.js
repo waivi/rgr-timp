@@ -46,39 +46,6 @@ function App() {
   return (
     <Router>
       <div className="App">
-        {/* Кнопка быстрого входа как администратор — видна только на странице входа */}
-        {!user && (
-          <div style={{ position: 'absolute', top: '10px', right: '20px', zIndex: 1000 }}>
-            <button
-              onClick={async () => {
-                try {
-                  const axios = (await import('axios')).default;
-                  const res = await axios.post('http://localhost:5000/api/login', {
-                    login: 'admin',
-                    password: '123'
-                  });
-                  if (res.data.success) {
-                    handleLogin(res.data.user);
-                  }
-                } catch (err) {
-                  console.error('Ошибка быстрого входа:', err);
-                }
-              }}
-              style={{
-                padding: '8px 16px',
-                background: '#722ed1',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              Войти как администратор
-            </button>
-          </div>
-        )}
-
         <Routes>
           <Route path="/" element={getDashboard()} />
           <Route path="/door" element={<DoorPage />} />
