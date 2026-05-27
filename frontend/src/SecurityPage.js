@@ -13,14 +13,22 @@ function SecurityPage({ user, onLogout }) {
   const [hours, setHours] = useState(2);
   const [message, setMessage] = useState('');
 
+  const token = localStorage.getItem('token');
+  const headers = { 'Authorization': `Bearer ${token}` };
+
   useEffect(() => {
     loadUsers();
     loadDoors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadUsers = async () => {
-    const res = await axios.get('http://localhost:5000/api/security/users');
-    setUsers(res.data);
+    try {
+      const res = await axios.get('http://localhost:5000/api/security/users', { headers });
+      setUsers(res.data);
+    } catch (err) {
+      if (err.response && err.response.status === 401) { localStorage.removeItem('token'); onLogout(); }
+    }
   };
 
   const loadDoors = async () => {
@@ -29,13 +37,21 @@ function SecurityPage({ user, onLogout }) {
   };
 
   const loadKeys = async () => {
-    const res = await axios.get('http://localhost:5000/api/security/keys');
-    setAllKeys(res.data);
+    try {
+      const res = await axios.get('http://localhost:5000/api/security/keys', { headers });
+      setAllKeys(res.data);
+    } catch (err) {
+      if (err.response && err.response.status === 401) { localStorage.removeItem('token'); onLogout(); }
+    }
   };
 
   const loadStatistics = async () => {
-    const res = await axios.get('http://localhost:5000/api/security/statistics');
-    setStatistics(res.data);
+    try {
+      const res = await axios.get('http://localhost:5000/api/security/statistics', { headers });
+      setStatistics(res.data);
+    } catch (err) {
+      if (err.response && err.response.status === 401) { localStorage.removeItem('token'); onLogout(); }
+    }
   };
 
   const handleGenerate = async (e) => {
@@ -46,9 +62,8 @@ function SecurityPage({ user, onLogout }) {
       const res = await axios.post('http://localhost:5000/api/security/keys/generate', {
         userId: parseInt(selectedUser),
         doorId: parseInt(selectedDoor),
-        hours: hours,
-        issuedBy: user.id
-      });
+        hours: hours
+      }, { headers });
 
       if (res.data.success) {
         setMessage(`Код ${res.data.key.pin} создан для ${res.data.key.userName}`);
@@ -57,17 +72,19 @@ function SecurityPage({ user, onLogout }) {
         setHours(2);
       }
     } catch (err) {
-      setMessage('Ошибка при создании кода');
+      if (err.response && err.response.status === 401) { localStorage.removeItem('token'); onLogout(); }
+      else setMessage('Ошибка при создании кода');
     }
   };
 
   const handleRevoke = async (keyId) => {
     if (!window.confirm('Вы уверены что хотите отозвать ключ?')) return;
-
-    await axios.post(`http://localhost:5000/api/security/keys/${keyId}/revoke`, {
-      revokedBy: user.id
-    });
-    loadKeys();
+    try {
+      await axios.post(`http://localhost:5000/api/security/keys/${keyId}/revoke`, {}, { headers });
+      loadKeys();
+    } catch (err) {
+      if (err.response && err.response.status === 401) { localStorage.removeItem('token'); onLogout(); }
+    }
   };
 
   const handleTabClick = (tabName) => {
@@ -88,7 +105,6 @@ function SecurityPage({ user, onLogout }) {
 
   return (
     <div>
-      {/* Шапка */}
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 20px', background: '#1890ff', color: 'white' }}>
         <h2>Панель безопасности</h2>
         <div>
@@ -97,26 +113,17 @@ function SecurityPage({ user, onLogout }) {
         </div>
       </div>
 
-      {/* Вкладки */}
       <div style={{ display: 'flex', gap: '10px', padding: '10px 20px', background: '#e0e0e0' }}>
         <button onClick={() => handleTabClick('generate')}
-          style={tabBtnStyle(tab === 'generate', '#1890ff')}>
-          Создать код
-        </button>
+          style={tabBtnStyle(tab === 'generate', '#1890ff')}>Создать код</button>
         <button onClick={() => handleTabClick('keys')}
-          style={tabBtnStyle(tab === 'keys', '#1890ff')}>
-          Все коды
-        </button>
+          style={tabBtnStyle(tab === 'keys', '#1890ff')}>Все коды</button>
         <button onClick={() => handleTabClick('stats')}
-          style={tabBtnStyle(tab === 'stats', '#1890ff')}>
-          Статистика
-        </button>
+          style={tabBtnStyle(tab === 'stats', '#1890ff')}>Статистика</button>
       </div>
 
-      {/* Содержимое вкладок */}
       <div style={{ padding: '20px' }}>
 
-        {/* Вкладка: Создать код */}
         {tab === 'generate' && (
           <div>
             <h3>Создать новый код доступа</h3>
@@ -149,7 +156,6 @@ function SecurityPage({ user, onLogout }) {
           </div>
         )}
 
-        {/* Вкладка: Все коды */}
         {tab === 'keys' && (
           <div>
             <h3>Все выданные коды</h3>
@@ -157,14 +163,10 @@ function SecurityPage({ user, onLogout }) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f0f0f0' }}>
-                    <th style={thStyle}>PIN</th>
-                    <th style={thStyle}>Сотрудник</th>
-                    <th style={thStyle}>Должность</th>
-                    <th style={thStyle}>Дверь</th>
-                    <th style={thStyle}>Действует до</th>
-                    <th style={thStyle}>Статус</th>
-                    <th style={thStyle}>Выдал</th>
-                    <th style={thStyle}>Действие</th>
+                    <th style={thStyle}>PIN</th><th style={thStyle}>Сотрудник</th>
+                    <th style={thStyle}>Должность</th><th style={thStyle}>Дверь</th>
+                    <th style={thStyle}>Действует до</th><th style={thStyle}>Статус</th>
+                    <th style={thStyle}>Выдал</th><th style={thStyle}>Действие</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -196,16 +198,13 @@ function SecurityPage({ user, onLogout }) {
           </div>
         )}
 
-        {/* Вкладка: Статистика */}
         {tab === 'stats' && (
           <div>
             <h3>Статистика доступов</h3>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f0f0f0' }}>
-                  <th style={thStyle}>Помещение</th>
-                  <th style={thStyle}>Категория</th>
-                  <th style={thStyle}>Активных кодов</th>
+                  <th style={thStyle}>Помещение</th><th style={thStyle}>Категория</th><th style={thStyle}>Активных кодов</th>
                 </tr>
               </thead>
               <tbody>

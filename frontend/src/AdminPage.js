@@ -11,6 +11,9 @@ function AdminPage({ user, onLogout }) {
   const [message, setMessage] = useState('');
   const [activeKeys, setActiveKeys] = useState([]);
 
+  const token = localStorage.getItem('token');
+  const headers = { 'Authorization': `Bearer ${token}` };
+
   const [newUser, setNewUser] = useState({
     login: '', password: '', lastName: '', firstName: '',
     middleName: '', roleId: '', positionId: '', phone: ''
@@ -21,44 +24,65 @@ function AdminPage({ user, onLogout }) {
     loadPositions();
     loadRoles();
     loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleAuthError = (err) => {
+    if (err.response && err.response.status === 401) {
+      localStorage.removeItem('token');
+      onLogout();
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/admin/users', { headers });
+      setUsers(res.data);
+    } catch (err) { handleAuthError(err); }
+  };
+
+  const loadLogs = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/admin/logs', { headers });
+      setLogs(res.data);
+    } catch (err) { handleAuthError(err); }
+  };
+
+  const loadStats = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/admin/statistics', { headers });
+      setStats(res.data);
+    } catch (err) { handleAuthError(err); }
+  };
+
+  const loadActiveKeys = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/security/keys', { headers });
+      setActiveKeys(res.data.filter(k => k.status === 'active'));
+    } catch (err) { handleAuthError(err); }
+  };
+
+  const loadPositions = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/admin/positions', { headers });
+      setPositions(res.data);
+    } catch (err) { handleAuthError(err); }
+  };
+
+  const loadRoles = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/admin/roles', { headers });
+      setRoles(res.data);
+    } catch (err) { handleAuthError(err); }
+  };
 
   useEffect(() => {
     if (tab === 'logs') {
       const interval = setInterval(loadLogs, 10000);
       return () => clearInterval(interval);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
-
-  const loadUsers = async () => {
-    const res = await axios.get('http://localhost:5000/api/admin/users');
-    setUsers(res.data);
-  };
-
-  const loadLogs = async () => {
-    const res = await axios.get('http://localhost:5000/api/admin/logs');
-    setLogs(res.data);
-  };
-
-  const loadStats = async () => {
-    const res = await axios.get('http://localhost:5000/api/admin/statistics');
-    setStats(res.data);
-  };
-
-  const loadActiveKeys = async () => {
-    const res = await axios.get('http://localhost:5000/api/security/keys');
-    setActiveKeys(res.data.filter(k => k.status === 'active'));
-  };
-
-  const loadPositions = async () => {
-    const res = await axios.get('http://localhost:5000/api/admin/positions');
-    setPositions(res.data);
-  };
-
-  const loadRoles = async () => {
-    const res = await axios.get('http://localhost:5000/api/admin/roles');
-    setRoles(res.data);
-  };
 
   const handleTabClick = (tabName) => {
     setTab(tabName);
@@ -80,9 +104,9 @@ function AdminPage({ user, onLogout }) {
         middleName: newUser.middleName,
         roleId: parseInt(newUser.roleId),
         positionId: newUser.positionId ? parseInt(newUser.positionId) : null,
-        phone: newUser.phone,
-        createdBy: user.id
-      });
+        phone: newUser.phone
+      }, { headers });
+
       if (res.data.success) {
         setMessage(`✅ Пользователь "${res.data.user.login}" создан`);
         loadUsers();
@@ -90,27 +114,32 @@ function AdminPage({ user, onLogout }) {
                      middleName: '', roleId: '', positionId: '', phone: '' });
       }
     } catch (err) {
-      setMessage('❌ Ошибка при создании пользователя');
+      if (err.response && err.response.data) {
+        setMessage(`❌ ${err.response.data.message}`);
+      } else {
+        setMessage('❌ Ошибка при создании пользователя');
+      }
     }
   };
 
   const handleBlockUser = async (userId, isActive) => {
     const action = isActive ? 'заблокировать' : 'разблокировать';
     if (!window.confirm(`Вы уверены что хотите ${action} пользователя?`)) return;
-    await axios.put(`http://localhost:5000/api/admin/users/${userId}`, {
-      isActive: !isActive,
-      updatedBy: user.id
-    });
-    loadUsers();
+    try {
+      await axios.put(`http://localhost:5000/api/admin/users/${userId}`, {
+        isActive: !isActive
+      }, { headers });
+      loadUsers();
+    } catch (err) { handleAuthError(err); }
   };
 
   const handleRevokeKey = async (keyId) => {
     if (!window.confirm('Отозвать этот ключ?')) return;
-    await axios.post(`http://localhost:5000/api/security/keys/${keyId}/revoke`, {
-      revokedBy: user.id
-    });
-    loadActiveKeys();
-    loadStats();
+    try {
+      await axios.post(`http://localhost:5000/api/security/keys/${keyId}/revoke`, {}, { headers });
+      loadActiveKeys();
+      loadStats();
+    } catch (err) { handleAuthError(err); }
   };
 
   const getRoleDisplay = (roleName) => {
@@ -124,7 +153,6 @@ function AdminPage({ user, onLogout }) {
 
   return (
     <div>
-      {/* Шапка */}
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 20px', background: '#722ed1', color: 'white' }}>
         <h2>Панель администратора</h2>
         <div>
@@ -133,7 +161,6 @@ function AdminPage({ user, onLogout }) {
         </div>
       </div>
 
-      {/* Вкладки */}
       <div style={{ display: 'flex', gap: '10px', padding: '10px 20px', background: '#f0f0f0' }}>
         {[
           { key: 'stats', label: 'Статистика' },
@@ -143,36 +170,23 @@ function AdminPage({ user, onLogout }) {
           { key: 'logs', label: 'Журнал действий' }
         ].map(t => (
           <button key={t.key} onClick={() => handleTabClick(t.key)}
-            style={tabBtnStyle(tab === t.key, '#722ed1')}>
-            {t.label}
-          </button>
+            style={tabBtnStyle(tab === t.key, '#722ed1')}>{t.label}</button>
         ))}
       </div>
 
       <div style={{ padding: '20px' }}>
 
-        {/* Вкладка: Статистика */}
         {tab === 'stats' && stats && (
           <div>
             <h3>Общая статистика системы</h3>
             <div style={{ display: 'flex', gap: '20px', marginTop: '20px', marginBottom: '30px', flexWrap: 'wrap' }}>
-              <div style={statCard}>
-                <h2>{stats.totalUsers}</h2>
-                <p>Активных пользователей</p>
-              </div>
-              <div style={statCard}>
-                <h2>{stats.totalActiveKeys}</h2>
-                <p>Активных ключей</p>
-              </div>
-              <div style={statCard}>
-                <h2>{stats.totalKeysToday}</h2>
-                <p>Выдано сегодня</p>
-              </div>
+              <div style={statCard}><h2>{stats.totalUsers}</h2><p>Активных пользователей</p></div>
+              <div style={statCard}><h2>{stats.totalActiveKeys}</h2><p>Активных ключей</p></div>
+              <div style={statCard}><h2>{stats.totalKeysToday}</h2><p>Выдано сегодня</p></div>
             </div>
           </div>
         )}
 
-        {/* Вкладка: Активные ключи */}
         {tab === 'keys' && (
           <div>
             <h3>Активные ключи на данный момент ({activeKeys.length})</h3>
@@ -183,14 +197,10 @@ function AdminPage({ user, onLogout }) {
                 <table style={tableStyle}>
                   <thead>
                     <tr style={{ background: '#f0f0f0' }}>
-                      <th style={thStyle}>PIN</th>
-                      <th style={thStyle}>Сотрудник</th>
-                      <th style={thStyle}>Должность</th>
-                      <th style={thStyle}>Дверь</th>
-                      <th style={thStyle}>Расположение</th>
-                      <th style={thStyle}>Выдал</th>
-                      <th style={thStyle}>Выдан</th>
-                      <th style={thStyle}>Действует до</th>
+                      <th style={thStyle}>PIN</th><th style={thStyle}>Сотрудник</th>
+                      <th style={thStyle}>Должность</th><th style={thStyle}>Дверь</th>
+                      <th style={thStyle}>Расположение</th><th style={thStyle}>Выдал</th>
+                      <th style={thStyle}>Выдан</th><th style={thStyle}>Действует до</th>
                       <th style={thStyle}>Действие</th>
                     </tr>
                   </thead>
@@ -207,10 +217,7 @@ function AdminPage({ user, onLogout }) {
                         <td style={tdStyle}>{new Date(key.validUntil).toLocaleString('ru-RU')}</td>
                         <td style={tdStyle}>
                           <button onClick={() => handleRevokeKey(key.id)}
-                            style={{
-                              background: '#ff4d4f', color: '#fff', border: 'none',
-                              padding: '6px 14px', borderRadius: '4px', cursor: 'pointer'
-                            }}>
+                            style={{ background: '#ff4d4f', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer' }}>
                             Отозвать
                           </button>
                         </td>
@@ -223,21 +230,15 @@ function AdminPage({ user, onLogout }) {
           </div>
         )}
 
-        {/* Вкладка: Пользователи */}
         {tab === 'users' && (
           <div>
             <h3>Все пользователи</h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={tableStyle}>
                 <thead><tr style={{ background: '#f0f0f0' }}>
-                  <th style={thStyle}>ID</th>
-                  <th style={thStyle}>ФИО</th>
-                  <th style={thStyle}>Логин</th>
-                  <th style={thStyle}>Роль</th>
-                  <th style={thStyle}>Должность</th>
-                  <th style={thStyle}>Телефон</th>
-                  <th style={thStyle}>Активен</th>
-                  <th style={thStyle}>Действие</th>
+                  <th style={thStyle}>ID</th><th style={thStyle}>ФИО</th><th style={thStyle}>Логин</th>
+                  <th style={thStyle}>Роль</th><th style={thStyle}>Должность</th>
+                  <th style={thStyle}>Телефон</th><th style={thStyle}>Активен</th><th style={thStyle}>Действие</th>
                 </tr></thead>
                 <tbody>
                   {users.map(u => (
@@ -252,11 +253,7 @@ function AdminPage({ user, onLogout }) {
                       <td style={tdStyle}>
                         {u.login !== 'system' && (
                           <button onClick={() => handleBlockUser(u.id, u.isActive)}
-                            style={{
-                              background: u.isActive ? '#ff4d4f' : '#52c41a',
-                              color: '#fff', border: 'none',
-                              padding: '4px 12px', borderRadius: '4px', cursor: 'pointer'
-                            }}>
+                            style={{ background: u.isActive ? '#ff4d4f' : '#52c41a', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer' }}>
                             {u.isActive ? 'Заблокировать' : 'Разблокировать'}
                           </button>
                         )}
@@ -269,7 +266,6 @@ function AdminPage({ user, onLogout }) {
           </div>
         )}
 
-        {/* Вкладка: Создать пользователя */}
         {tab === 'create' && (
           <div>
             <h3>Создать нового пользователя</h3>
@@ -304,19 +300,15 @@ function AdminPage({ user, onLogout }) {
           </div>
         )}
 
-        {/* Вкладка: Логи */}
         {tab === 'logs' && (
           <div>
-            <h3>Журнал действий (последние 500)</h3>
+            <h3>Журнал действий (последние 500) — автообновление каждые 10 сек</h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={tableStyle}>
                 <thead><tr style={{ background: '#f0f0f0' }}>
-                  <th style={thStyle}>Время</th>
-                  <th style={thStyle}>Пользователь</th>
-                  <th style={thStyle}>Действие</th>
-                  <th style={thStyle}>Сущность</th>
-                  <th style={thStyle}>Детали</th>
-                  <th style={thStyle}>IP</th>
+                  <th style={thStyle}>Время</th><th style={thStyle}>Пользователь</th>
+                  <th style={thStyle}>Действие</th><th style={thStyle}>Сущность</th>
+                  <th style={thStyle}>Детали</th><th style={thStyle}>IP</th>
                 </tr></thead>
                 <tbody>
                   {logs.map(log => (

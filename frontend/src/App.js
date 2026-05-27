@@ -11,20 +11,13 @@ import './App.css';
 function App() {
   const [user, setUser] = useState(null);
 
-  React.useEffect(() => {
-    const saved = localStorage.getItem('user');
-    if (saved) {
-      setUser(JSON.parse(saved));
-    }
-  }, []);
-
   const handleLogin = (userData) => {
     setUser(userData);
-    localStorage.setItem('user', JSON.stringify(userData));
   };
 
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem('token');
     localStorage.removeItem('user');
   };
 

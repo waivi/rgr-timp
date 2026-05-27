@@ -8,14 +8,22 @@ function EmployeePage({ user, onLogout }) {
     loadKeys();
     const interval = setInterval(loadKeys, 30000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadKeys = async () => {
     try {
-      const response = await axios.get(`http://localhost:5000/api/employee/${user.id}/keys`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:5000/api/employee/keys', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setKeys(response.data);
     } catch (err) {
       console.error('Ошибка загрузки ключей:', err);
+      if (err.response && err.response.status === 401) {
+        localStorage.removeItem('token');
+        onLogout();
+      }
     }
   };
 
@@ -40,9 +48,9 @@ function EmployeePage({ user, onLogout }) {
     const end = new Date(validUntil);
     const diff = end - now;
 
-    if (diff <= 0) return '#faad14';       // жёлтый — истекает
-    if (diff < 30 * 60 * 1000) return '#faad14'; // жёлтый — меньше 30 минут
-    return '#52c41a';                       // зелёный — всё хорошо
+    if (diff <= 0) return '#faad14';
+    if (diff < 30 * 60 * 1000) return '#faad14';
+    return '#52c41a';
   };
 
   const isExpiringSoon = (validUntil) => {

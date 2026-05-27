@@ -17,10 +17,15 @@ function Login({ onLogin }) {
       });
 
       if (response.data.success) {
+        localStorage.setItem('token', response.data.token);
         onLogin(response.data.user);
       }
     } catch (err) {
-      setError('Неверный логин или пароль');
+      if (err.response && err.response.status === 429) {
+        setError('Слишком много попыток. Подождите минуту.');
+      } else {
+        setError('Неверный логин или пароль');
+      }
     }
   };
 
